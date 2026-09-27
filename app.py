@@ -770,9 +770,26 @@ class MainWindow(QMainWindow):
                 
         # Autosave incrementally
         try:
+            if getattr(self.viewer.pdf_doc, "is_repaired", False):
+                raise ValueError("Il PDF necessita di un salvataggio completo.")
             self.viewer.pdf_doc.save(self.viewer.pdf_doc.name, incremental=True, encryption=fitz.PDF_ENCRYPT_KEEP)
         except Exception as e:
-            print("Auto-save fallito:", e)
+            try:
+                # Full save fallback
+                doc = self.viewer.pdf_doc
+                path = doc.name
+                temp_path = path + ".tmp.pdf"
+                doc.save(temp_path, encryption=fitz.PDF_ENCRYPT_KEEP)
+                # Dobbiamo chiudere il documento corrente prima di sovrascriverlo (su Windows fallirebbe altrimenti, su Mac è più sicuro)
+                page_num = self.viewer.current_page_num
+                doc.close()
+                import os
+                os.replace(temp_path, path)
+                # Riapri il documento
+                self.viewer.pdf_doc = fitz.open(path)
+                self.viewer.current_page_num = page_num
+            except Exception as e2:
+                print("Salvataggio completo fallito:", e2)
             
         if baked_any:
             self.viewer.render_page()
