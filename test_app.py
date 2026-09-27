@@ -2,12 +2,17 @@ import sys
 import os
 import unittest
 import json
+from unittest.mock import patch
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QMouseEvent
+from PyQt6.QtGui import QMouseEvent, QPixmap
 from PyQt6.QtCore import QPointF, QPoint, Qt
-
-app = QApplication(sys.argv)
 import app as george_app
+import fitz
+
+# Ensure QApplication exists before tests
+_app = QApplication.instance()
+if not _app:
+    _app = QApplication(sys.argv)
 
 class TestGeorgeApp(unittest.TestCase):
     def setUp(self):
@@ -40,11 +45,7 @@ class TestGeorgeApp(unittest.TestCase):
             history = json.load(f)
             self.assertIn(test_path, history)
 
-if __name__ == '__main__':
-    unittest.main(verbosity=2)
-
-    def test_tutorial_shows(self):
-        # Simula il click sul bottone help
+    def test_05_tutorial_shows(self):
         with patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info:
             self.window.show_tutorial()
             mock_info.assert_called_once()
@@ -52,7 +53,28 @@ if __name__ == '__main__':
             self.assertEqual(args[1], "Tutorial di George")
             self.assertIn("STRUMENTI", args[2])
 
+    def test_06_render_page_keeps_image_alive(self):
+        # Create a dummy pdf
+        test_pdf = "test_render.pdf"
+        doc = fitz.open()
+        doc.insert_page(-1, text="Test page rendering")
+        doc.save(test_pdf)
+        doc.close()
 
+        self.window.viewer.load_pdf(test_pdf)
+        # Verify the pixmap was added to the scene and is not null
+        items = self.window.viewer.scene_obj.items()
+        self.assertGreater(len(items), 0)
+        
+        # Ensure it has a valid QPixmap width/height indicating it rendered properly
+        pixmap_items = [item for item in items if hasattr(item, "pixmap")]
+        self.assertGreater(len(pixmap_items), 0)
+        pm = pixmap_items[0].pixmap()
+        self.assertFalse(pm.isNull())
+        self.assertGreater(pm.width(), 0)
+        self.assertGreater(pm.height(), 0)
+
+        os.remove(test_pdf)
 
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main(verbosity=2)
