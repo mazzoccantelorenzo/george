@@ -381,7 +381,8 @@ class PDFViewer(QGraphicsView):
         
         mat = fitz.Matrix(self.zoom, self.zoom)
         pix = page.get_pixmap(matrix=mat)
-        img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
+        samples = pix.samples
+        img = QImage(samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
         pixmap = QPixmap.fromImage(img)
         self.scene_obj.addPixmap(pixmap)
         self.setSceneRect(0, 0, pixmap.width(), pixmap.height())
