@@ -299,7 +299,9 @@ class PostItItem(QGraphicsRectItem):
         self.header.setBrush(QBrush(QColor(bg_color).darker(105)))
         self.header.setPen(QPen(Qt.PenStyle.NoPen))
         self.header.setCursor(Qt.CursorShape.ArrowCursor)
-        
+        # Non accetta eventi mouse: li lascia salire a PostItItem
+        self.header.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+
         # Close btn
         self.close_btn = QGraphicsTextItem("×", self.header)
         font = QFont(".AppleSystemUIFont", 16, QFont.Weight.Bold)
@@ -307,7 +309,8 @@ class PostItItem(QGraphicsRectItem):
         self.close_btn.setDefaultTextColor(QColor("#555555"))
         self.close_btn.setPos(158, -3)
         self.close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        
+        self.close_btn.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+
         # Dots btn
         self.dots_btn = QGraphicsTextItem("...", self.header)
         font2 = QFont(".AppleSystemUIFont", 16, QFont.Weight.Bold)
@@ -315,14 +318,16 @@ class PostItItem(QGraphicsRectItem):
         self.dots_btn.setDefaultTextColor(QColor("#555555"))
         self.dots_btn.setPos(2, -8)
         self.dots_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        
+        self.dots_btn.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+
         # Color Palette
         self.palette = QGraphicsRectItem(5, 26, 170, 34, self)
         self.palette.setBrush(QBrush(QColor("#333333")))
         self.palette.setPen(QPen(QColor("#ffffff"), 1))
         self.palette.setZValue(10)
+        self.palette.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         self.palette.hide()
-        
+
         colors = [
             ("Giallo", "#fceea7", (0.98, 0.93, 0.65)),
             ("Verde", "#b5f5b5", (0.71, 0.96, 0.71)),
@@ -337,9 +342,11 @@ class PostItItem(QGraphicsRectItem):
             btn.setPen(QPen(QColor("#000000"), 1))
             btn.setData(101, (hex_code, pdf_c))
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            # Events bubble up to PostItItem — ellipsi non gestiscono mouse
+            btn.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self.color_btns.append(btn)
             cx += 35
-        
+
         # Text
         self.text_item = QGraphicsTextItem(text, self)
         self.text_item.setFont(QFont(".AppleSystemUIFont", 13))
@@ -348,7 +355,7 @@ class PostItItem(QGraphicsRectItem):
         self.text_item.setPos(5, 24)
         self.text_item.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         self.text_item.setCursor(Qt.CursorShape.IBeamCursor)
-        
+
         self.setData(100, "postit")
         self.text_item.setData(100, "postit_text")
         doc = self.text_item.document()
@@ -356,24 +363,29 @@ class PostItItem(QGraphicsRectItem):
             doc.contentsChanged.connect(self.update_rect)
 
     def mousePressEvent(self, event: Any) -> None:
-        # PyQt6: use event.scenePosition() (renamed from Qt5's scenePos())
-        scene_pos = event.scenePosition() if hasattr(event, "scenePosition") else event.scenePos()
+        # Called by Qt when PostItItem itself is the top hit (e.g. clicking text area).
+        # Delegates to handle_click with the proper scene position.
+        self.handle_click(event.scenePos())
 
-        # Header clicks
+    def handle_click(self, scene_pos: Any) -> None:
+        """Central click handler. Called both from mousePressEvent and directly from PDFViewer
+        (when the topmost item is a sub-item grandchild and Qt can't dispatch correctly)."""
+
+        # Close btn
         if self.close_btn.sceneBoundingRect().contains(scene_pos):
             scene = self.scene()
             if scene:
                 scene.removeItem(self)
-                # Forza un salvataggio dopo aver eliminato il postit
                 if hasattr(scene.views()[0], "main_window"):
                     cast(Any, scene.views()[0]).main_window.save_file()
             return
 
+        # Dots btn → toggle palette
         if self.dots_btn.sceneBoundingRect().contains(scene_pos):
             self.palette.setVisible(not self.palette.isVisible())
-            event.accept()
             return
 
+        # Color palette btns
         if self.palette.isVisible():
             for btn in self.color_btns:
                 if btn.sceneBoundingRect().contains(scene_pos):
@@ -383,9 +395,7 @@ class PostItItem(QGraphicsRectItem):
                     scene = self.scene()
                     if scene and hasattr(scene.views()[0], "main_window"):
                         cast(Any, scene.views()[0]).main_window.save_file()
-                    event.accept()
                     return
-        super().mousePressEvent(event)
 
     def set_color(self, hex_code: str, pdf_c: tuple[float, float, float]) -> None:
         self.bg_color = hex_code
@@ -612,7 +622,10 @@ class PDFViewer(QGraphicsView):
                         return
             return
 
-        # Walk up the parent chain: dots_btn / close_btn / color_btns are grandchildren of PostItItem
+        # itemAt() returns the topmost Z-order item (even with NoButton children).
+        # QGraphicsSceneMouseEvent cannot be instantiated from Python, so we cannot call
+        # PostItItem.mousePressEvent directly with the right type.
+        # Instead: find the PostItItem ancestor and call its action logic directly.
         def find_postit_ancestor(it: Any) -> Any:
             while it is not None:
                 if isinstance(it, PostItItem):
@@ -622,10 +635,10 @@ class PDFViewer(QGraphicsView):
 
         postit_ancestor = find_postit_ancestor(item)
         if postit_ancestor is not None:
-            postit_ancestor.mousePressEvent(event)
+            postit_ancestor.handle_click(pos)
             return
 
-        if item and (item.data(100) == "postit" or item.data(100) == "postit_text" or isinstance(item, QGraphicsTextItem)):
+        if item and item.data(100) == "postit_text":
             super().mousePressEvent(event)
             return
         
