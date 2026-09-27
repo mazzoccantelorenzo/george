@@ -712,15 +712,16 @@ class MainWindow(QMainWindow):
 
     def eventFilter(self, obj: Any, event: Any) -> bool:
         from PyQt6.QtCore import QEvent, Qt
+        from PyQt6.QtWidgets import QApplication
         if event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
-            if event.key() in (Qt.Key.Key_Control, Qt.Key.Key_Meta):
-                is_cmd = (event.type() == QEvent.Type.KeyPress)
-                if is_cmd:
-                    from PyQt6.QtGui import QCursor, QIcon
-                    icon = QIcon(get_resource_path("icons/sticky_note.svg"))
-                    self.viewer.setCursor(QCursor(icon.pixmap(24, 24), 0, 0))
-                else:
-                    self.change_mode()
+            modifiers = QApplication.keyboardModifiers()
+            is_cmd = bool((modifiers & Qt.KeyboardModifier.ControlModifier) or (modifiers & Qt.KeyboardModifier.MetaModifier))
+            if is_cmd:
+                from PyQt6.QtGui import QCursor, QIcon
+                icon = QIcon(get_resource_path("icons/sticky_note.svg"))
+                self.viewer.setCursor(QCursor(icon.pixmap(24, 24), 0, 0))
+            else:
+                self.change_mode()
         return super().eventFilter(obj, event)
 
     def change_mode(self) -> None:
