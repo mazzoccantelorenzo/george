@@ -426,6 +426,13 @@ class PDFViewer(QGraphicsView):
                     
         super().keyPressEvent(event)
 
+    def get_effective_mode(self) -> str:
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QApplication
+        modifiers = QApplication.keyboardModifiers()
+        is_cmd = bool((modifiers & Qt.KeyboardModifier.ControlModifier) or (modifiers & Qt.KeyboardModifier.MetaModifier))
+        return "postit" if is_cmd else self.mode
+
     def mousePressEvent(self, event: Any) -> None:
         if not self.pdf_doc: return
         pos = self.mapToScene(event.pos())
@@ -463,17 +470,17 @@ class PDFViewer(QGraphicsView):
             return
         
         self.start_pos = pos
-        if self.mode == "highlight":
+        if self.get_effective_mode() == "highlight":
             self.start_word_idx = self.get_word_index_at(pos)
         else:
-            pass
+            self.start_word_idx = -1
 
     def mouseMoveEvent(self, event: Any) -> None:
         super().mouseMoveEvent(event)
         if not self.start_pos: return
         pos = self.mapToScene(event.pos())
         
-        if self.mode == "highlight" and self.start_word_idx != -1:
+        if self.get_effective_mode() == "highlight" and self.start_word_idx != -1:
             end_word_idx = self.get_word_index_at(pos)
             if end_word_idx != -1:
                 for it in self.highlight_items:
@@ -499,11 +506,7 @@ class PDFViewer(QGraphicsView):
         if not self.start_pos: return
         pos = self.mapToScene(event.pos())
         
-        from PyQt6.QtCore import Qt
-        from PyQt6.QtWidgets import QApplication
-        modifiers = QApplication.keyboardModifiers()
-        is_cmd = bool((modifiers & Qt.KeyboardModifier.ControlModifier) or (modifiers & Qt.KeyboardModifier.MetaModifier))
-        effective_mode = "postit" if is_cmd else self.mode
+        effective_mode = self.get_effective_mode()
         
         if effective_mode == "highlight" and self.start_word_idx != -1:
             end_word_idx = self.get_word_index_at(pos)
