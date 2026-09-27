@@ -631,7 +631,7 @@ class MainWindow(QMainWindow):
         self.radio_post.toggled.connect(self.change_mode)
         self.radio_erase.toggled.connect(self.change_mode)
         
-        self.color_buttons = {}
+        self.color_buttons: dict[str, tuple[QPushButton, str]] = {}
         self.current_color = "Giallo"
         
         def select_color(col_name: str) -> None:
