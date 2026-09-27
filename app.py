@@ -284,6 +284,7 @@ class PostItItem(QGraphicsRectItem):
         self.setBrush(QBrush(QColor(bg_color)))
         self.setPen(QPen(QColor(bg_color).darker(110), 1))
         self.setFlags(QGraphicsRectItem.GraphicsItemFlag.ItemIsMovable | QGraphicsRectItem.GraphicsItemFlag.ItemIsSelectable)
+        self.setCursor(Qt.CursorShape.IBeamCursor)
         
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(10)
