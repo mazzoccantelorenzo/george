@@ -627,11 +627,22 @@ class MainWindow(QMainWindow):
         self.radio_post.toggled.connect(self.change_mode)
         self.radio_erase.toggled.connect(self.change_mode)
         
-        def make_color_btn(col_name, hex_code):
+        self.color_buttons = {}
+        self.current_color = "Giallo"
+        
+        def select_color(col_name: str) -> None:
+            self.current_color = col_name
+            for name, (btn, hex_code) in self.color_buttons.items():
+                if name == col_name:
+                    btn.setStyleSheet(f"background-color: {hex_code}; border-radius: 12px; border: 3px solid #ffffff;")
+                else:
+                    btn.setStyleSheet(f"background-color: {hex_code}; border-radius: 12px; border: 1px solid #000000;")
+                    
+        def make_color_btn(col_name: str, hex_code: str) -> QPushButton:
             btn = QPushButton()
             btn.setFixedSize(24, 24)
-            btn.setStyleSheet(f"background-color: {hex_code}; border-radius: 12px; border: 1px solid #000;")
-            btn.clicked.connect(lambda: setattr(self, 'current_color', col_name))
+            btn.clicked.connect(lambda checked=False, c=col_name: select_color(c))
+            self.color_buttons[col_name] = (btn, hex_code)
             return btn
             
         color_layout = QVBoxLayout()
@@ -640,6 +651,7 @@ class MainWindow(QMainWindow):
         color_layout.addWidget(make_color_btn("Verde", "#b5f5b5"), 0, Qt.AlignmentFlag.AlignHCenter)
         color_layout.addWidget(make_color_btn("Rosa", "#f5b5f5"), 0, Qt.AlignmentFlag.AlignHCenter)
         color_layout.addWidget(make_color_btn("Azzurro", "#b5dcf5"), 0, Qt.AlignmentFlag.AlignHCenter)
+        select_color("Giallo")
         
         rt_layout.addWidget(self.radio_erase)
         rt_layout.addWidget(self.radio_high)
