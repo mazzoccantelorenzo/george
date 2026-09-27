@@ -281,73 +281,70 @@ class PostItItem(QGraphicsRectItem):
         self.setPos(x, y)
         self.pdf_color = pdf_color
         self.bg_color = bg_color
-        
+
         self.setBrush(QBrush(QColor(bg_color)))
         self.setPen(QPen(QColor(bg_color).darker(110), 1))
         self.setFlags(QGraphicsRectItem.GraphicsItemFlag.ItemIsMovable | QGraphicsRectItem.GraphicsItemFlag.ItemIsSelectable)
-        # Il main rect (che contiene l'header) ha cursore default (freccia)
         self.setCursor(Qt.CursorShape.ArrowCursor)
-        
+
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(10)
         shadow.setOffset(2, 2)
         shadow.setColor(QColor(0, 0, 0, 80))
         self.setGraphicsEffect(shadow)
-        
-        # Header (24px padding sopra)
+
+        # Header (24px) — cursore a croce frecce per indicare che è trascinabile
         self.header = QGraphicsRectItem(0, 0, 180, 24, self)
-        self.header.setBrush(QBrush(QColor(bg_color).darker(105)))
+        self.header.setBrush(QBrush(QColor(bg_color).darker(108)))
         self.header.setPen(QPen(Qt.PenStyle.NoPen))
-        self.header.setCursor(Qt.CursorShape.ArrowCursor)
-        # Non accetta eventi mouse: li lascia salire a PostItItem
+        self.header.setCursor(Qt.CursorShape.SizeAllCursor)   # indica drag
         self.header.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
 
-        # Close btn
+        # Close btn  ×  — in alto a destra
         self.close_btn = QGraphicsTextItem("×", self.header)
-        font = QFont(".AppleSystemUIFont", 16, QFont.Weight.Bold)
-        self.close_btn.setFont(font)
-        self.close_btn.setDefaultTextColor(QColor("#555555"))
-        self.close_btn.setPos(158, -3)
+        font_btn = QFont(".AppleSystemUIFont", 15, QFont.Weight.Bold)
+        self.close_btn.setFont(font_btn)
+        self.close_btn.setDefaultTextColor(QColor("#666666"))
+        self.close_btn.setPos(160, -2)
         self.close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.close_btn.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
 
-        # Dots btn
-        self.dots_btn = QGraphicsTextItem("...", self.header)
-        font2 = QFont(".AppleSystemUIFont", 16, QFont.Weight.Bold)
-        self.dots_btn.setFont(font2)
-        self.dots_btn.setDefaultTextColor(QColor("#555555"))
-        self.dots_btn.setPos(2, -8)
+        # Dots btn  ⋯  — a sinistra della ×
+        self.dots_btn = QGraphicsTextItem("⋯", self.header)
+        self.dots_btn.setFont(font_btn)
+        self.dots_btn.setDefaultTextColor(QColor("#666666"))
+        self.dots_btn.setPos(135, -2)
         self.dots_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.dots_btn.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
 
-        # Color Palette
-        self.palette = QGraphicsRectItem(5, 26, 170, 34, self)
-        self.palette.setBrush(QBrush(QColor("#333333")))
-        self.palette.setPen(QPen(QColor("#ffffff"), 1))
-        self.palette.setZValue(10)
+        # Color Palette — posizionata SOPRA il post-it (Y negativa) per non coprire il testo
+        PALETTE_H = 34
+        self.palette = QGraphicsRectItem(0, -(PALETTE_H + 4), 180, PALETTE_H, self)
+        self.palette.setBrush(QBrush(QColor("#2a2a2a")))
+        self.palette.setPen(QPen(QColor("#555555"), 1))
+        self.palette.setZValue(20)
         self.palette.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         self.palette.hide()
 
         colors = [
-            ("Giallo", "#fceea7", (0.98, 0.93, 0.65)),
-            ("Verde", "#b5f5b5", (0.71, 0.96, 0.71)),
-            ("Rosa", "#f5b5f5", (0.96, 0.71, 0.96)),
+            ("Giallo",  "#fceea7", (0.98, 0.93, 0.65)),
+            ("Verde",   "#b5f5b5", (0.71, 0.96, 0.71)),
+            ("Rosa",    "#f5b5f5", (0.96, 0.71, 0.96)),
             ("Azzurro", "#b5dcf5", (0.71, 0.86, 0.96))
         ]
         self.color_btns = []
         cx = 15
-        for name, hex_code, pdf_c in colors:
-            btn = QGraphicsEllipseItem(cx, 4, 20, 20, self.palette)
+        for _name, hex_code, pdf_c in colors:
+            btn = QGraphicsEllipseItem(cx, 7, 22, 22, self.palette)
             btn.setBrush(QBrush(QColor(hex_code)))
-            btn.setPen(QPen(QColor("#000000"), 1))
+            btn.setPen(QPen(QColor("#888888"), 1))
             btn.setData(101, (hex_code, pdf_c))
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            # Events bubble up to PostItItem — ellipsi non gestiscono mouse
             btn.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self.color_btns.append(btn)
-            cx += 35
+            cx += 40
 
-        # Text
+        # Text area
         self.text_item = QGraphicsTextItem(text, self)
         self.text_item.setFont(QFont(".AppleSystemUIFont", 13))
         self.text_item.setDefaultTextColor(QColor("black"))
@@ -363,13 +360,14 @@ class PostItItem(QGraphicsRectItem):
             doc.contentsChanged.connect(self.update_rect)
 
     def mousePressEvent(self, event: Any) -> None:
-        # Called by Qt when PostItItem itself is the top hit (e.g. clicking text area).
-        # Delegates to handle_click with the proper scene position.
-        self.handle_click(event.scenePos())
+        # Called by Qt when PostItItem itself is the top hit.
+        # If handle_click doesn't consume the event, fall through to super()
+        # so Qt's ItemIsMovable drag mechanism activates.
+        if not self.handle_click(event.scenePos()):
+            super().mousePressEvent(event)
 
-    def handle_click(self, scene_pos: Any) -> None:
-        """Central click handler. Called both from mousePressEvent and directly from PDFViewer
-        (when the topmost item is a sub-item grandchild and Qt can't dispatch correctly)."""
+    def handle_click(self, scene_pos: Any) -> bool:
+        """Handle a click at scene_pos. Returns True if consumed, False to let drag proceed."""
 
         # Close btn
         if self.close_btn.sceneBoundingRect().contains(scene_pos):
@@ -378,12 +376,12 @@ class PostItItem(QGraphicsRectItem):
                 scene.removeItem(self)
                 if hasattr(scene.views()[0], "main_window"):
                     cast(Any, scene.views()[0]).main_window.save_file()
-            return
+            return True
 
         # Dots btn → toggle palette
         if self.dots_btn.sceneBoundingRect().contains(scene_pos):
             self.palette.setVisible(not self.palette.isVisible())
-            return
+            return True
 
         # Color palette btns
         if self.palette.isVisible():
@@ -395,7 +393,10 @@ class PostItItem(QGraphicsRectItem):
                     scene = self.scene()
                     if scene and hasattr(scene.views()[0], "main_window"):
                         cast(Any, scene.views()[0]).main_window.save_file()
-                    return
+                    return True
+
+        # Plain click on body/header → let drag proceed
+        return False
 
     def set_color(self, hex_code: str, pdf_c: tuple[float, float, float]) -> None:
         self.bg_color = hex_code
@@ -635,7 +636,11 @@ class PDFViewer(QGraphicsView):
 
         postit_ancestor = find_postit_ancestor(item)
         if postit_ancestor is not None:
-            postit_ancestor.handle_click(pos)
+            consumed = postit_ancestor.handle_click(pos)
+            if consumed:
+                return
+            # Not consumed (plain header/body click) → let Qt handle drag via ItemIsMovable
+            super().mousePressEvent(event)
             return
 
         if item and item.data(100) == "postit_text":
@@ -893,18 +898,18 @@ class MainWindow(QMainWindow):
         from PyQt6.QtWidgets import QApplication
         if event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
             if event.key() in (Qt.Key.Key_Control, Qt.Key.Key_Meta):
-                modifiers = QApplication.keyboardModifiers()
-                is_cmd = bool((modifiers & Qt.KeyboardModifier.ControlModifier) or (modifiers & Qt.KeyboardModifier.MetaModifier))
-                
-                # MacOS key release bug fix
-                if event.type() == QEvent.Type.KeyRelease and event.key() in (Qt.Key.Key_Control, Qt.Key.Key_Meta):
-                    is_cmd = False
-                    
+                # KeyPress of Cmd/Ctrl = Cmd is now held.
+                # KeyRelease of Cmd/Ctrl = Cmd is now released.
+                # No need to check modifiers() — the key identity is the signal.
+                is_cmd = (event.type() == QEvent.Type.KeyPress)
+
                 if is_cmd:
                     from PyQt6.QtGui import QCursor, QIcon
                     icon = QIcon(get_resource_path("icons/sticky_note.svg"))
-                    self.viewer.setCursor(QCursor(icon.pixmap(24, 24), 0, 0))
+                    # setOverrideCursor beats every item-level cursor (IBeam, Arrow, etc.)
+                    QApplication.setOverrideCursor(QCursor(icon.pixmap(28, 28), 0, 0))
                 else:
+                    QApplication.restoreOverrideCursor()
                     self.radio_high.setChecked(True)
                     self.change_mode()
         return super().eventFilter(obj, event)

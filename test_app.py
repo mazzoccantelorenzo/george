@@ -126,7 +126,7 @@ class TestGeorgeApp(unittest.TestCase):
         os.remove(tmp)
 
     def test_08_postit_close_button_removes_item(self) -> None:
-        """Clicking the × on a PostIt removes it from the scene."""
+        """Clicking the × on a PostIt removes it from the scene and handle_click returns True."""
         tmp = "/tmp/test_08_close.pdf"
         self._make_pdf(tmp)
         self.window.viewer.load_pdf(tmp)
@@ -138,17 +138,8 @@ class TestGeorgeApp(unittest.TestCase):
                   if getattr(it, "data", lambda x: None)(100) == "postit"]
         self.assertEqual(len(before), 1)
 
-        class MockEvent:
-            def __init__(self, sp: "QPointF") -> None:
-                self._sp = sp
-            def scenePos(self) -> "QPointF":
-                return self._sp
-            def pos(self) -> "QPointF":
-                return self._sp
-            def accept(self) -> None:
-                pass
-
-        postit.mousePressEvent(MockEvent(postit.close_btn.sceneBoundingRect().center()))  # type: ignore[arg-type]
+        consumed = postit.handle_click(postit.close_btn.sceneBoundingRect().center())
+        self.assertTrue(consumed, "handle_click should return True for close btn!")
 
         after = [it for it in self.window.viewer.scene_obj.items()
                  if getattr(it, "data", lambda x: None)(100) == "postit"]
@@ -158,7 +149,7 @@ class TestGeorgeApp(unittest.TestCase):
         os.remove(tmp)
 
     def test_09_postit_color_change(self) -> None:
-        """Clicking a palette color updates the PostIt background color."""
+        """Clicking a palette color updates the PostIt background color and returns True."""
         tmp = "/tmp/test_09_color.pdf"
         self._make_pdf(tmp)
         self.window.viewer.load_pdf(tmp)
@@ -167,27 +158,36 @@ class TestGeorgeApp(unittest.TestCase):
         self.window.viewer.scene_obj.addItem(postit)
         self.assertEqual(postit.bg_color, "#fceea7")
 
-        # Show the palette then click the Verde button (index 1)
-        postit.palette.show()
-        verde_btn = postit.color_btns[1]
+        # Show the palette via dots_btn
+        consumed_dots = postit.handle_click(postit.dots_btn.sceneBoundingRect().center())
+        self.assertTrue(consumed_dots, "Dots btn click should return True!")
+        self.assertTrue(postit.palette.isVisible(), "Palette deve essere visibile!")
 
-        class MockEvent:
-            def __init__(self, sp: "QPointF") -> None:
-                self._sp = sp
-            def scenePos(self) -> "QPointF":
-                return self._sp
-            def pos(self) -> "QPointF":
-                return self._sp
-            def accept(self) -> None:
-                pass
-
-        postit.mousePressEvent(MockEvent(verde_btn.sceneBoundingRect().center()))  # type: ignore[arg-type]
+        # Click Verde
+        consumed_color = postit.handle_click(postit.color_btns[1].sceneBoundingRect().center())
+        self.assertTrue(consumed_color, "Color btn click should return True!")
 
         self.assertEqual(postit.bg_color, "#b5f5b5", "Colore non aggiornato dopo click sul pallino Verde!")
         self.assertFalse(postit.palette.isVisible(), "Palette rimasta aperta dopo selezione colore!")
 
         import os
         os.remove(tmp)
+
+    def test_13_postit_body_click_allows_drag(self) -> None:
+        """Clicking the header body (not close/dots/color) returns False so drag can proceed."""
+        postit = george_app.PostItItem("Move me", 50, 50)
+        self.window.viewer.scene_obj.addItem(postit)
+
+        # Click the center of the header (not on any button)
+        header_center = postit.header.sceneBoundingRect().center()
+        # Make sure we're not on close or dots
+        close_rect = postit.close_btn.sceneBoundingRect()
+        dots_rect  = postit.dots_btn.sceneBoundingRect()
+        self.assertFalse(close_rect.contains(header_center))
+        self.assertFalse(dots_rect.contains(header_center))
+
+        consumed = postit.handle_click(header_center)
+        self.assertFalse(consumed, "Plain header click should return False so drag is allowed!")
 
     def test_10_zoom_by_changes_zoom_level(self) -> None:
         """zoom_by increases / decreases self.zoom by ZOOM_STEP and clamps at limits."""
@@ -258,6 +258,30 @@ class TestGeorgeApp(unittest.TestCase):
 
         import os
         os.remove(tmp)
+
+
+    def test_14_cmd_key_sets_postit_override_cursor(self) -> None:
+        """Pressing Cmd sets a QApplication override cursor; releasing it removes the override."""
+        from PyQt6.QtCore import QEvent, Qt
+        from PyQt6.QtGui import QKeyEvent
+        from PyQt6.QtWidgets import QApplication
+
+        # Start clean
+        QApplication.restoreOverrideCursor()
+        self.assertIsNone(QApplication.overrideCursor(),
+                          "Should have no override cursor initially")
+
+        # Simulate Cmd press → override cursor must be set
+        press = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Meta, Qt.KeyboardModifier.MetaModifier)
+        self.window.eventFilter(self.window, press)
+        self.assertIsNotNone(QApplication.overrideCursor(),
+                             "Cmd press must set a QApplication override cursor (postit icon)!")
+
+        # Simulate Cmd release → override cursor must be cleared
+        release = QKeyEvent(QEvent.Type.KeyRelease, Qt.Key.Key_Meta, Qt.KeyboardModifier.NoModifier)
+        self.window.eventFilter(self.window, release)
+        self.assertIsNone(QApplication.overrideCursor(),
+                          "Cmd release must restore the override cursor!")
 
 
 if __name__ == '__main__':
