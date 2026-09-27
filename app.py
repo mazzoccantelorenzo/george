@@ -768,28 +768,18 @@ class MainWindow(QMainWindow):
                 self.viewer.scene_obj.removeItem(item)
                 baked_any = True
                 
-        # Autosave incrementally
+        # Salvataggio sicuro tramite file temporaneo per evitare corruzione della memoria
         try:
-            if getattr(self.viewer.pdf_doc, "is_repaired", False):
-                raise ValueError("Il PDF necessita di un salvataggio completo.")
-            self.viewer.pdf_doc.save(self.viewer.pdf_doc.name, incremental=True, encryption=fitz.PDF_ENCRYPT_KEEP)
+            doc = self.viewer.pdf_doc
+            path = doc.name
+            temp_path = path + ".tmp.pdf"
+            # Un full save elimina il rischio di corrompere il file originale o l'oggetto in memoria
+            doc.save(temp_path, encryption=fitz.PDF_ENCRYPT_KEEP)
+            import os
+            # Su Mac/Linux possiamo sovrascrivere il file anche se è aperto. L'inode originale viene mantenuto vivo dal SO.
+            os.replace(temp_path, path)
         except Exception as e:
-            try:
-                # Full save fallback
-                doc = self.viewer.pdf_doc
-                path = doc.name
-                temp_path = path + ".tmp.pdf"
-                doc.save(temp_path, encryption=fitz.PDF_ENCRYPT_KEEP)
-                # Dobbiamo chiudere il documento corrente prima di sovrascriverlo (su Windows fallirebbe altrimenti, su Mac è più sicuro)
-                page_num = self.viewer.current_page_num
-                doc.close()
-                import os
-                os.replace(temp_path, path)
-                # Riapri il documento
-                self.viewer.pdf_doc = fitz.open(path)
-                self.viewer.current_page_num = page_num
-            except Exception as e2:
-                print("Salvataggio completo fallito:", e2)
+            print("Auto-save fallito:", e)
             
         if baked_any:
             self.viewer.render_page()
