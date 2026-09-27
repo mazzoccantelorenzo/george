@@ -189,6 +189,76 @@ class TestGeorgeApp(unittest.TestCase):
         import os
         os.remove(tmp)
 
+    def test_10_zoom_by_changes_zoom_level(self) -> None:
+        """zoom_by increases / decreases self.zoom by ZOOM_STEP and clamps at limits."""
+        viewer = self.window.viewer
+        initial = viewer.zoom
+
+        viewer.zoom_by(viewer.ZOOM_STEP)
+        self.assertAlmostEqual(viewer.zoom, initial + viewer.ZOOM_STEP, places=5)
+
+        viewer.zoom_by(-viewer.ZOOM_STEP)
+        self.assertAlmostEqual(viewer.zoom, initial, places=5)
+
+    def test_11_zoom_clamps_at_min_max(self) -> None:
+        """zoom_by never goes below ZOOM_MIN or above ZOOM_MAX."""
+        viewer = self.window.viewer
+
+        viewer.zoom = viewer.ZOOM_MIN
+        viewer.zoom_by(-10.0)  # try to go way below min
+        self.assertAlmostEqual(viewer.zoom, viewer.ZOOM_MIN, places=5)
+
+        viewer.zoom = viewer.ZOOM_MAX
+        viewer.zoom_by(10.0)  # try to go way above max
+        self.assertAlmostEqual(viewer.zoom, viewer.ZOOM_MAX, places=5)
+
+    def test_12_postit_color_change_via_viewer_routing(self) -> None:
+        """Clicking a color btn via PDFViewer.mousePressEvent actually changes the PostIt color.
+
+        This is the bug regression test: sub-items (dots_btn, color_btns) are grandchildren
+        of PostItItem and were previously invisible to PDFViewer's event routing, so clicking
+        the palette did nothing.
+        """
+        tmp = "/tmp/test_12_routing.pdf"
+        self._make_pdf(tmp)
+        self.window.viewer.load_pdf(tmp)
+
+        postit = george_app.PostItItem("Routing test", 50, 50, bg_color="#fceea7")
+        self.window.viewer.scene_obj.addItem(postit)
+        self.assertEqual(postit.bg_color, "#fceea7")
+
+        # Step 1 – show palette via dots_btn click routed through PDFViewer
+        from PyQt6.QtCore import QEvent, QPointF
+        from PyQt6.QtGui import QMouseEvent
+
+        def send_click(scene_pt: "QPointF") -> None:
+            vp_pt = self.window.viewer.mapFromScene(scene_pt)
+            ev = QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                QPointF(vp_pt),
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+            from PyQt6.QtWidgets import QApplication
+            QApplication.sendEvent(self.window.viewer.viewport(), ev)
+
+        send_click(postit.dots_btn.sceneBoundingRect().center())
+        self.assertTrue(postit.palette.isVisible(),
+                        "Palette non si è aperta dopo click sui tre puntini via PDFViewer!")
+
+        # Step 2 – click Verde via PDFViewer
+        verde_center = postit.color_btns[1].sceneBoundingRect().center()
+        send_click(verde_center)
+
+        self.assertEqual(postit.bg_color, "#b5f5b5",
+                         "Il colore del PostIt non è cambiato dopo click via PDFViewer!")
+        self.assertFalse(postit.palette.isVisible(),
+                         "Palette rimasta aperta dopo click colore via PDFViewer!")
+
+        import os
+        os.remove(tmp)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

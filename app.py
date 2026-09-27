@@ -35,7 +35,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
     QGraphicsDropShadowEffect,
-    QGraphicsRectItem,
+    QGraphicsRectItem, QGraphicsEllipseItem,
     QGraphicsScene,
     QGraphicsTextItem,
     QGraphicsView,
@@ -277,14 +277,16 @@ class VaultSelector(QDialog):
 
 class PostItItem(QGraphicsRectItem):
     def __init__(self, text: str, x: float, y: float, bg_color: str = "#fceea7", pdf_color: tuple[float, float, float] = (0.98, 0.93, 0.65)) -> None:
-        super().__init__(0, 0, 180, 50)
+        super().__init__(0, 0, 180, 70)
         self.setPos(x, y)
         self.pdf_color = pdf_color
+        self.bg_color = bg_color
         
         self.setBrush(QBrush(QColor(bg_color)))
         self.setPen(QPen(QColor(bg_color).darker(110), 1))
         self.setFlags(QGraphicsRectItem.GraphicsItemFlag.ItemIsMovable | QGraphicsRectItem.GraphicsItemFlag.ItemIsSelectable)
-        self.setCursor(Qt.CursorShape.IBeamCursor)
+        # Il main rect (che contiene l'header) ha cursore default (freccia)
+        self.setCursor(Qt.CursorShape.ArrowCursor)
         
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(10)
@@ -292,24 +294,111 @@ class PostItItem(QGraphicsRectItem):
         shadow.setColor(QColor(0, 0, 0, 80))
         self.setGraphicsEffect(shadow)
         
+        # Header (24px padding sopra)
+        self.header = QGraphicsRectItem(0, 0, 180, 24, self)
+        self.header.setBrush(QBrush(QColor(bg_color).darker(105)))
+        self.header.setPen(QPen(Qt.PenStyle.NoPen))
+        self.header.setCursor(Qt.CursorShape.ArrowCursor)
+        
+        # Close btn
+        self.close_btn = QGraphicsTextItem("×", self.header)
+        font = QFont(".AppleSystemUIFont", 16, QFont.Weight.Bold)
+        self.close_btn.setFont(font)
+        self.close_btn.setDefaultTextColor(QColor("#555555"))
+        self.close_btn.setPos(158, -3)
+        self.close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        # Dots btn
+        self.dots_btn = QGraphicsTextItem("...", self.header)
+        font2 = QFont(".AppleSystemUIFont", 16, QFont.Weight.Bold)
+        self.dots_btn.setFont(font2)
+        self.dots_btn.setDefaultTextColor(QColor("#555555"))
+        self.dots_btn.setPos(2, -8)
+        self.dots_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        # Color Palette
+        self.palette = QGraphicsRectItem(5, 26, 170, 34, self)
+        self.palette.setBrush(QBrush(QColor("#333333")))
+        self.palette.setPen(QPen(QColor("#ffffff"), 1))
+        self.palette.setZValue(10)
+        self.palette.hide()
+        
+        colors = [
+            ("Giallo", "#fceea7", (0.98, 0.93, 0.65)),
+            ("Verde", "#b5f5b5", (0.71, 0.96, 0.71)),
+            ("Rosa", "#f5b5f5", (0.96, 0.71, 0.96)),
+            ("Azzurro", "#b5dcf5", (0.71, 0.86, 0.96))
+        ]
+        self.color_btns = []
+        cx = 15
+        for name, hex_code, pdf_c in colors:
+            btn = QGraphicsEllipseItem(cx, 4, 20, 20, self.palette)
+            btn.setBrush(QBrush(QColor(hex_code)))
+            btn.setPen(QPen(QColor("#000000"), 1))
+            btn.setData(101, (hex_code, pdf_c))
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.color_btns.append(btn)
+            cx += 35
+        
+        # Text
         self.text_item = QGraphicsTextItem(text, self)
         self.text_item.setFont(QFont(".AppleSystemUIFont", 13))
         self.text_item.setDefaultTextColor(QColor("black"))
         self.text_item.setTextWidth(170)
-        self.text_item.setPos(5, 5)
+        self.text_item.setPos(5, 24)
         self.text_item.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+        self.text_item.setCursor(Qt.CursorShape.IBeamCursor)
+        
         self.setData(100, "postit")
         self.text_item.setData(100, "postit_text")
         doc = self.text_item.document()
         if doc:
             doc.contentsChanged.connect(self.update_rect)
 
+    def mousePressEvent(self, event: Any) -> None:
+        # PyQt6: use event.scenePosition() (renamed from Qt5's scenePos())
+        scene_pos = event.scenePosition() if hasattr(event, "scenePosition") else event.scenePos()
+
+        # Header clicks
+        if self.close_btn.sceneBoundingRect().contains(scene_pos):
+            scene = self.scene()
+            if scene:
+                scene.removeItem(self)
+                # Forza un salvataggio dopo aver eliminato il postit
+                if hasattr(scene.views()[0], "main_window"):
+                    cast(Any, scene.views()[0]).main_window.save_file()
+            return
+
+        if self.dots_btn.sceneBoundingRect().contains(scene_pos):
+            self.palette.setVisible(not self.palette.isVisible())
+            event.accept()
+            return
+
+        if self.palette.isVisible():
+            for btn in self.color_btns:
+                if btn.sceneBoundingRect().contains(scene_pos):
+                    hex_code, pdf_c = btn.data(101)
+                    self.set_color(hex_code, pdf_c)
+                    self.palette.hide()
+                    scene = self.scene()
+                    if scene and hasattr(scene.views()[0], "main_window"):
+                        cast(Any, scene.views()[0]).main_window.save_file()
+                    event.accept()
+                    return
+        super().mousePressEvent(event)
+
+    def set_color(self, hex_code: str, pdf_c: tuple[float, float, float]) -> None:
+        self.bg_color = hex_code
+        self.pdf_color = pdf_c
+        self.setBrush(QBrush(QColor(self.bg_color)))
+        self.setPen(QPen(QColor(self.bg_color).darker(110), 1))
+        self.header.setBrush(QBrush(QColor(self.bg_color).darker(105)))
+
     def update_rect(self) -> None:
-        h = max(50.0, self.text_item.boundingRect().height() + 10)
-        self.setRect(0, 0, 180, h)
         doc = self.text_item.document()
         h = max(50.0, float(doc.size().height() if doc else 0.0) + 10)
-        self.setRect(0, 0, 180, h)
+        # L'altezza totale include l'header da 24px
+        self.setRect(0, 0, 180, h + 24)
 
 class FloatingButton(QPushButton):
     def __init__(self, text, parent=None):
@@ -365,6 +454,34 @@ class PDFViewer(QGraphicsView):
         self.btn_prev.move(10, (self.height() - self.btn_prev.height()) // 2)
         self.btn_next.move(self.width() - self.btn_next.width() - 30, (self.height() - self.btn_next.height()) // 2)
 
+    ZOOM_MIN: float = 0.5
+    ZOOM_MAX: float = 5.0
+    ZOOM_STEP: float = 0.1
+
+    def zoom_by(self, delta: float) -> None:
+        """Change zoom by delta (e.g. +0.1 or -0.1), clamp, re-render."""
+        new_zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, self.zoom + delta))
+        if abs(new_zoom - self.zoom) < 1e-6:
+            return
+        self.zoom = new_zoom
+        self.render_page()
+
+    def wheelEvent(self, event: Any) -> None:
+        from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtCore import Qt
+        modifiers = QApplication.keyboardModifiers()
+        is_cmd = bool(
+            (modifiers & Qt.KeyboardModifier.ControlModifier)
+            or (modifiers & Qt.KeyboardModifier.MetaModifier)
+        )
+        if is_cmd and self.pdf_doc:
+            # One notch up = +10 %, down = -10 %
+            delta = self.ZOOM_STEP if event.angleDelta().y() > 0 else -self.ZOOM_STEP
+            self.zoom_by(delta)
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
     def load_pdf(self, path: str) -> None:
         self.pdf_doc = fitz.open(path)
         self.current_page_num = 0
@@ -379,6 +496,26 @@ class PDFViewer(QGraphicsView):
         
         self.words = page.get_text("words")
         
+        postits_to_create = []
+        if page.first_annot:
+            annot = page.first_annot
+            while annot:
+                next_annot = annot.next
+                if annot.type[0] == fitz.PDF_ANNOT_FREE_TEXT:
+                    rect = annot.rect
+                    text = annot.info.get("content", "")
+                    color_vals = annot.colors.get("fill")
+                    if not color_vals: color_vals = annot.colors.get("stroke")
+                    if not color_vals: color_vals = [0.98, 0.93, 0.65]
+                    
+                    postits_to_create.append({
+                        "text": text,
+                        "rect": rect,
+                        "pdf_color": tuple(color_vals)
+                    })
+                    page.delete_annot(annot)
+                annot = next_annot
+                
         mat = fitz.Matrix(self.zoom, self.zoom)
         pix = page.get_pixmap(matrix=mat)
         samples = pix.samples
@@ -386,6 +523,14 @@ class PDFViewer(QGraphicsView):
         pixmap = QPixmap.fromImage(img)
         self.scene_obj.addPixmap(pixmap)
         self.setSceneRect(0, 0, pixmap.width(), pixmap.height())
+        
+        for p in postits_to_create:
+            pdf_c = p["pdf_color"]
+            hex_color = f"#{int(pdf_c[0]*255):02x}{int(pdf_c[1]*255):02x}{int(pdf_c[2]*255):02x}"
+            x = p["rect"].x0 * self.zoom
+            y = (p["rect"].y0 * self.zoom) - 24
+            postit = PostItItem(p["text"], x, y, bg_color=hex_color, pdf_color=pdf_c)
+            self.scene_obj.addItem(postit)
 
     def save_pdf(self, path):
         if self.pdf_doc:
@@ -453,6 +598,7 @@ class PDFViewer(QGraphicsView):
                     break
             
             if deleted:
+                self.main_window.save_file()
                 return
                 
             p = fitz.Point(pos.x() / self.zoom, pos.y() / self.zoom)
@@ -464,6 +610,19 @@ class PDFViewer(QGraphicsView):
                         self.main_window.save_file()
                         self.render_page()
                         return
+            return
+
+        # Walk up the parent chain: dots_btn / close_btn / color_btns are grandchildren of PostItItem
+        def find_postit_ancestor(it: Any) -> Any:
+            while it is not None:
+                if isinstance(it, PostItItem):
+                    return it
+                it = it.parentItem()
+            return None
+
+        postit_ancestor = find_postit_ancestor(item)
+        if postit_ancestor is not None:
+            postit_ancestor.mousePressEvent(event)
             return
 
         if item and (item.data(100) == "postit" or item.data(100) == "postit_text" or isinstance(item, QGraphicsTextItem)):
@@ -705,6 +864,11 @@ class MainWindow(QMainWindow):
         # Save è sempre Ctrl+S / Cmd+S per non interferire mai con la scrittura
         QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.save_file)
 
+        # Zoom in/out: Cmd++ e Cmd+- (+ e = sono sullo stesso tasto fisico)
+        QShortcut(QKeySequence("Ctrl+="), self).activated.connect(lambda: self.viewer.zoom_by(self.viewer.ZOOM_STEP))
+        QShortcut(QKeySequence("Ctrl++"), self).activated.connect(lambda: self.viewer.zoom_by(self.viewer.ZOOM_STEP))
+        QShortcut(QKeySequence("Ctrl+-"), self).activated.connect(lambda: self.viewer.zoom_by(-self.viewer.ZOOM_STEP))
+
         self.change_mode()
         from PyQt6.QtWidgets import QApplication
         app_inst = QApplication.instance()
@@ -753,22 +917,28 @@ class MainWindow(QMainWindow):
     def save_file(self) -> None:
         if not self.viewer.pdf_doc: return
         page = self.viewer.pdf_doc[self.viewer.current_page_num]
-        baked_any = False
+        # Elimina i FreeText correnti per evitare duplicati quando rifacciamo il bake
+        if page.first_annot:
+            annot = page.first_annot
+            while annot:
+                next_annot = annot.next
+                if annot.type[0] == fitz.PDF_ANNOT_FREE_TEXT:
+                    page.delete_annot(annot)
+                annot = next_annot
         
         # Bake live items
         for item in self.viewer.scene_obj.items():
             if getattr(item, "data", lambda x: None)(100) == "postit":
+                # Escludiamo l'header (24px) dall'annotazione del PDF, così il testo non shifta in alto
+                header_offset = 24 / self.viewer.zoom
                 x, y = item.x() / self.viewer.zoom, item.y() / self.viewer.zoom
-                w, h = cast(Any, item).rect().width() / self.viewer.zoom, cast(Any, item).rect().height() / self.viewer.zoom
-                rect = fitz.Rect(x, y, x+w, y+h)
+                w, h = cast(Any, item).rect().width() / self.viewer.zoom, (cast(Any, item).rect().height() - 24) / self.viewer.zoom
+                rect = fitz.Rect(x, y + header_offset, x+w, y+header_offset+h)
                 text = cast(Any, item).text_item.toPlainText()
                 
                 annot = page.add_freetext_annot(rect, text, fontsize=12, text_color=(0,0,0), fill_color=cast(Any, item).pdf_color)
                 annot.update()
-                self.viewer.scene_obj.removeItem(item)
-                baked_any = True
-                
-        # Salvataggio sicuro tramite file temporaneo per evitare corruzione della memoria
+                # Salvataggio sicuro tramite file temporaneo per evitare corruzione della memoria
         try:
             doc = self.viewer.pdf_doc
             path = doc.name
@@ -780,9 +950,6 @@ class MainWindow(QMainWindow):
             os.replace(temp_path, path)
         except Exception as e:
             print("Auto-save fallito:", e)
-            
-        if baked_any:
-            self.viewer.render_page()
 
 
     def show_tutorial(self) -> None:
