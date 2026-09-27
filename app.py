@@ -772,7 +772,7 @@ class MainWindow(QMainWindow):
 
     def show_tutorial(self) -> None:
         from PyQt6.QtWidgets import QMessageBox
-        msg = "🚀 Benvenuto in George v12.0\n\n"
+        msg = "Benvenuto in George v12.0\n\n"
         msg += "📖 STRUMENTI:\n"
         msg += "- Evidenziatore (H): Seleziona il testo per evidenziare.\n"
         msg += "- Post-it (P): Clicca sul PDF per creare un post-it, inizia subito a scrivere.\n"
