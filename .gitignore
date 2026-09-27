@@ -1,0 +1,9 @@
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+*.spec
+*.pyc
+__pycache__/
+test*.py
+test.pdf
