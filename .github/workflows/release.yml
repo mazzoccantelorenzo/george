@@ -24,7 +24,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
 
       - name: Installa dipendenze e PyInstaller
         run: |
@@ -37,7 +36,7 @@ jobs:
 
       - name: Compila George.exe con PyInstaller
         run: |
-          pyinstaller --windowed --noconfirm --icon=app_icon.ico --add-data "icon_fixed.png;." --add-data "icons;icons" --add-data "chat_assets;chat_assets" --name=George app.py
+          python -m PyInstaller --windowed --noconfirm --icon=app_icon.ico --add-data "icon_fixed.png;." --add-data "icons;icons" --add-data "chat_assets;chat_assets" --name=George app.py
 
       - name: Prepara installer 1-click e crea George-Windows.zip
         shell: pwsh
@@ -73,8 +72,9 @@ jobs:
           Compress-Archive -Path "dist/win_staging/*" -DestinationPath "dist/George-Windows.zip" -Force
 
       - name: Carica George-Windows.zip nella GitHub Release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.event.release.tag_name || inputs.tag_name }}"
-          gh release upload "$TAG" dist/George-Windows.zip --clobber
+          $tag = "${{ github.event.release.tag_name || inputs.tag_name }}"
+          gh release upload "$tag" dist/George-Windows.zip --clobber
