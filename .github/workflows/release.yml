@@ -1,0 +1,80 @@
+name: Build & Attach Windows Release
+
+on:
+  release:
+    types: [published, created]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag della release a cui allegare George-Windows.zip (es. v12.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Installa dipendenze e PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install PyQt6 PyQt6-WebEngine==6.10.0 PyMuPDF pyinstaller pillow
+
+      - name: Converti icona PNG in ICO per Windows
+        run: |
+          python -c "from PIL import Image; img = Image.open('icon_fixed.png'); img.save('app_icon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+
+      - name: Compila George.exe con PyInstaller
+        run: |
+          pyinstaller --windowed --noconfirm --icon=app_icon.ico --add-data "icon_fixed.png;." --add-data "icons;icons" --add-data "chat_assets;chat_assets" --name=George app.py
+
+      - name: Prepara installer 1-click e crea George-Windows.zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "dist/win_staging" | Out-Null
+          Copy-Item -Path "dist/George" -Destination "dist/win_staging/George" -Recurse -Force
+
+          $installerBat = @'
+          @echo off
+          title Installazione di George per Windows
+          echo ===================================================
+          echo   Installazione di George in corso...
+          echo ===================================================
+          set "SRC_DIR=%~dp0George"
+          set "DEST_DIR=%LOCALAPPDATA%\Programs\George"
+
+          if not exist "%SRC_DIR%\George.exe" (
+              set "SRC_DIR=%~dp0"
+          )
+
+          if not exist "%DEST_DIR%" mkdir "%DEST_DIR%"
+          robocopy "%SRC_DIR%" "%DEST_DIR%" /E /IS /IT /NFL /NDL /NJH /NJS /NC /NS /NP >NUL
+
+          powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -Path '%DEST_DIR%' -Recurse -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue; $ws = New-Object -ComObject WScript.Shell; $desk = [Environment]::GetFolderPath('Desktop'); $s = $ws.CreateShortcut((Join-Path $desk 'George.lnk')); $s.TargetPath = '%DEST_DIR%\George.exe'; $s.WorkingDirectory = '%DEST_DIR%'; $s.IconLocation = '%DEST_DIR%\George.exe,0'; $s.Save(); $sm = [Environment]::GetFolderPath('StartMenu'); $s2 = $ws.CreateShortcut((Join-Path $sm 'Programs\George.lnk')); $s2.TargetPath = '%DEST_DIR%\George.exe'; $s2.WorkingDirectory = '%DEST_DIR%'; $s2.IconLocation = '%DEST_DIR%\George.exe,0'; $s2.Save()"
+
+          echo.
+          echo Installazione completata! Collegamento creato sul Desktop.
+          echo Avvio di George...
+          start "" "%DEST_DIR%\George.exe"
+          '@
+          Set-Content -Path "dist/win_staging/Installa e Apri George.bat" -Value $installerBat -Encoding ASCII
+
+          Compress-Archive -Path "dist/win_staging/*" -DestinationPath "dist/George-Windows.zip" -Force
+
+      - name: Carica George-Windows.zip nella GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag_name }}"
+          gh release upload "$TAG" dist/George-Windows.zip --clobber

@@ -2,16 +2,17 @@ import sys
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt, QPointF
 from PyQt6.QtGui import QMouseEvent
-import app
+import fitz
+from window import MainWindow
 
 a = QApplication(sys.argv)
-doc = app.fitz.open()
+doc = fitz.open()
 doc.insert_page(-1)
 doc.save("test.pdf")
 doc.close()
 
-mw = app.MainWindow()
-mw.viewer.pdf_doc = app.fitz.open("test.pdf")
+mw = MainWindow()
+mw.viewer.pdf_doc = fitz.open("test.pdf")
 mw.viewer.render_page()
 
 # Simulate post-it click
